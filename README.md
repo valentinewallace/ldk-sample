@@ -3,7 +3,7 @@ Sample node implementation using LDK.
 
 ## Installation
 ```
-git@github.com:valentinewallace/ldk-sample.git
+git clone git@github.com:valentinewallace/ldk-sample.git
 ```
 
 ## Usage
