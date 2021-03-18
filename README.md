@@ -3,12 +3,12 @@ Sample node implementation using LDK.
 
 ## Installation
 ```
-git clone git@github.com:valentinewallace/ldk-tutorial-node.git
+git@github.com:valentinewallace/ldk-sample.git
 ```
 
 ## Usage
 ```
-cd ldk-tutorial-node
+cd ldk-sample
 cargo run <bitcoind-rpc-username>:<bitcoind-rpc-password>@<bitcoind-rpc-host>:<bitcoind-rpc-port> <ldk_storage_directory_path> [<ldk-peer-listening-port>] [bitcoin-network]
 ```
 `bitcoin-network`: defaults to `testnet`. Options: `testnet`, `regtest`.
