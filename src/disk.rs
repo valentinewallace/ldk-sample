@@ -3,7 +3,7 @@ use bitcoin::hashes::hex::FromHex;
 use bitcoin::secp256k1::key::PublicKey;
 use bitcoin::{BlockHash, Txid};
 use lightning::chain::channelmonitor::ChannelMonitor;
-use lightning::chain::keysinterface::{InMemorySigner, KeysManager};
+use lightning::chain::keysinterface::{KeysInterface, Sign};
 use lightning::chain::transaction::OutPoint;
 use lightning::util::logger::{Logger, Record};
 use lightning::util::ser::{ReadableArgs, Writer};
@@ -73,9 +73,9 @@ pub(crate) fn read_channel_peer_data(
 	Ok(peer_data)
 }
 
-pub(crate) fn read_channelmonitors(
-	path: String, keys_manager: Arc<KeysManager>,
-) -> Result<HashMap<OutPoint, (BlockHash, ChannelMonitor<InMemorySigner>)>, std::io::Error> {
+pub(crate) fn read_channelmonitors<S: Sign, M: KeysInterface<Signer=S>>(
+	path: String, keys_manager: Arc<M>,
+) -> Result<HashMap<OutPoint, (BlockHash, ChannelMonitor<S>)>, std::io::Error> {
 	if !Path::new(&path).exists() {
 		return Ok(HashMap::new());
 	}
@@ -110,7 +110,7 @@ pub(crate) fn read_channelmonitors(
 		let contents = fs::read(&file.path())?;
 
 		if let Ok((blockhash, channel_monitor)) =
-			<(BlockHash, ChannelMonitor<InMemorySigner>)>::read(
+			<(BlockHash, ChannelMonitor<S>)>::read(
 				&mut Cursor::new(&contents),
 				&*keys_manager,
 			) {

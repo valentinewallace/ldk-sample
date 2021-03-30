@@ -99,8 +99,8 @@ pub(crate) fn parse_startup_args() -> Result<LdkUserInfo, ()> {
 	})
 }
 
-pub(crate) fn poll_for_user_input<S: Sign + Sync, M: KeysInterface<Signer=S>>(
-	peer_manager: Arc<PeerManager<S>>, channel_manager: Arc<ChannelManager<S, M>>,
+pub(crate) fn poll_for_user_input<S: 'static + Sign + Sync, M: 'static + KeysInterface<Signer=S>>(
+	peer_manager: Arc<PeerManager<S, M>>, channel_manager: Arc<ChannelManager<S, M>>,
 	router: Arc<NetGraphMsgHandler<Arc<dyn chain::Access>, Arc<FilesystemLogger>>>,
 	payment_storage: PaymentInfoStorage, node_privkey: SecretKey, event_notifier: mpsc::Sender<()>,
 	ldk_data_dir: String, logger: Arc<FilesystemLogger>, runtime_handle: Handle, network: Network,
@@ -447,8 +447,8 @@ fn list_payments(payment_storage: PaymentInfoStorage) {
 	println!("]");
 }
 
-pub(crate) fn connect_peer_if_necessary<S: Sign + Sync>(
-	pubkey: PublicKey, peer_addr: SocketAddr, peer_manager: Arc<PeerManager<S>>,
+pub(crate) fn connect_peer_if_necessary<S: 'static + Sign + Sync, M: 'static + KeysInterface<Signer=S>>(
+	pubkey: PublicKey, peer_addr: SocketAddr, peer_manager: Arc<PeerManager<S, M>>,
 	event_notifier: mpsc::Sender<()>, runtime: Handle,
 ) -> Result<(), ()> {
 	for node_pubkey in peer_manager.get_peer_node_ids() {
