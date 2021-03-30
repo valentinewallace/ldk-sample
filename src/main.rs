@@ -17,7 +17,7 @@ use bitcoin::BlockHash;
 use bitcoin_bech32::WitnessProgram;
 use lightning::chain;
 use lightning::chain::chaininterface::{BroadcasterInterface, ConfirmationTarget, FeeEstimator};
-use lightning::chain::chainmonitor::ChainMonitor;
+use lightning::chain::chainmonitor;
 use lightning::chain::keysinterface::{InMemorySigner, KeysInterface, KeysManager};
 use lightning::chain::transaction::OutPoint;
 use lightning::chain::Filter;
@@ -48,7 +48,6 @@ use std::io::Write;
 use std::ops::Deref;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use std::thread;
 use std::time::{Duration, SystemTime};
 use tokio::sync::mpsc;
 
@@ -81,7 +80,7 @@ pub(crate) type PaymentInfoStorage = Arc<
 	>,
 >;
 
-type ArcChainMonitor = ChainMonitor<
+type ChainMonitor = chainmonitor::ChainMonitor<
 	InMemorySigner,
 	Arc<dyn Filter>,
 	Arc<BitcoindClient>,
@@ -92,7 +91,7 @@ type ArcChainMonitor = ChainMonitor<
 
 pub(crate) type PeerManager = SimpleArcPeerManager<
 	SocketDescriptor,
-	ArcChainMonitor,
+	ChainMonitor,
 	BitcoindClient,
 	BitcoindClient,
 	dyn chain::Access,
@@ -100,12 +99,11 @@ pub(crate) type PeerManager = SimpleArcPeerManager<
 >;
 
 pub(crate) type ChannelManager =
-	SimpleArcChannelManager<ArcChainMonitor, BitcoindClient, BitcoindClient, FilesystemLogger>;
+	SimpleArcChannelManager<ChainMonitor, BitcoindClient, BitcoindClient, FilesystemLogger>;
 
 async fn handle_ldk_events(
 	peer_manager: Arc<PeerManager>, channel_manager: Arc<ChannelManager>,
-	// chain_monitor: Arc<ArcChainMonitor>, bitcoind_client: Arc<Mutex<BitcoindClient>>,
-	chain_monitor: Arc<ArcChainMonitor>, bitcoind_client: Arc<BitcoindClient>,
+	chain_monitor: Arc<ChainMonitor>, bitcoind_client: Arc<BitcoindClient>,
 	keys_manager: Arc<KeysManager>, payment_storage: PaymentInfoStorage, network: Network,
 ) {
 	let mut pending_txs: HashMap<OutPoint, Transaction> = HashMap::new();
@@ -124,7 +122,6 @@ async fn handle_ldk_events(
 				} => {
 					// Construct the raw transaction with one output, that is paid the amount of the
 					// channel.
-					// let mut rpc = bitcoind_client.lock().unwrap();
 					let addr = WitnessProgram::from_scriptpubkey(
 						&output_script[..],
 						match network {
@@ -138,19 +135,17 @@ async fn handle_ldk_events(
 					.to_address();
 					let mut outputs = vec![HashMap::with_capacity(1)];
 					outputs[0].insert(addr, channel_value_satoshis as f64 / 100_000_000.0);
-					// let raw_tx = rpc.create_raw_transaction(outputs).await;
 					let raw_tx = bitcoind_client.create_raw_transaction(outputs).await;
 
 					// Have your wallet put the inputs into the transaction such that the output is
 					// satisfied.
-					// let funded_tx = rpc.fund_raw_transaction(raw_tx).await;
 					let funded_tx = bitcoind_client.fund_raw_transaction(raw_tx).await;
 					let change_output_position = funded_tx.changepos;
 					assert!(change_output_position == 0 || change_output_position == 1);
 
 					// Sign the final funding transaction and broadcast it.
-					// let signed_tx = rpc.sign_raw_transaction_with_wallet(funded_tx.hex).await;
-					let signed_tx = bitcoind_client.sign_raw_transaction_with_wallet(funded_tx.hex).await;
+					let signed_tx =
+						bitcoind_client.sign_raw_transaction_with_wallet(funded_tx.hex).await;
 					assert_eq!(signed_tx.complete, true);
 					let final_tx: Transaction =
 						encode::deserialize(&hex_utils::to_vec(&signed_tx.hex).unwrap()).unwrap();
@@ -164,9 +159,7 @@ async fn handle_ldk_events(
 					pending_txs.insert(outpoint, final_tx);
 				}
 				Event::FundingBroadcastSafe { funding_txo, .. } => {
-					// let mut rpc = bitcoind_client.lock().unwrap();
 					let funding_tx = pending_txs.remove(&funding_txo).unwrap();
-					// rpc.broadcast_transaction(&funding_tx);
 					bitcoind_client.broadcast_transaction(&funding_tx);
 					println!("\nEVENT: broadcasted funding transaction");
 					print!("> ");
@@ -241,20 +234,19 @@ async fn handle_ldk_events(
 				}
 				Event::PendingHTLCsForwardable { time_forwardable } => {
 					let forwarding_channel_manager = loop_channel_manager.clone();
-					thread::spawn(move || {
+					tokio::spawn(async move {
 						let min = time_forwardable.as_secs();
 						let seconds_to_sleep = thread_rng().gen_range(min, min * 5);
-						thread::sleep(Duration::new(seconds_to_sleep, 0));
+						// thread::sleep(Duration::new(seconds_to_sleep, 0));
+						tokio::time::sleep(Duration::from_secs(seconds_to_sleep)).await;
 						forwarding_channel_manager.process_pending_htlc_forwards();
 					});
 				}
 				Event::SpendableOutputs { outputs } => {
-					// let mut rpc = bitcoind_client.lock().unwrap();
-					// let destination_address = rpc.get_new_address().await;
 					let destination_address = bitcoind_client.get_new_address().await;
 					let output_descriptors = &outputs.iter().map(|a| a).collect::<Vec<_>>();
-					// let tx_feerate = rpc.get_est_sat_per_1000_weight(ConfirmationTarget::Normal);
-					let tx_feerate = bitcoind_client.get_est_sat_per_1000_weight(ConfirmationTarget::Normal);
+					let tx_feerate =
+						bitcoind_client.get_est_sat_per_1000_weight(ConfirmationTarget::Normal);
 					let spending_tx = keys_manager
 						.spend_spendable_outputs(
 							output_descriptors,
@@ -264,18 +256,17 @@ async fn handle_ldk_events(
 							&Secp256k1::new(),
 						)
 						.unwrap();
-					// rpc.broadcast_transaction(&spending_tx);
 					bitcoind_client.broadcast_transaction(&spending_tx);
 					// XXX maybe need to rescan and blah?
 				}
 			}
 		}
-		thread::sleep(Duration::new(1, 0));
+		tokio::time::sleep(Duration::from_secs(1)).await;
 	}
 }
 
 #[tokio::main]
-async fn main() {
+pub async fn main() {
 	let args = match cli::parse_startup_args() {
 		Ok(user_args) => user_args,
 		Err(()) => return,
@@ -286,13 +277,14 @@ async fn main() {
 	fs::create_dir_all(ldk_data_dir.clone()).unwrap();
 
 	// Initialize our bitcoind client.
-	let bitcoind_client = match BitcoindClient::new(
+	let mut bitcoind_client = match BitcoindClient::new(
 		args.bitcoind_rpc_host.clone(),
 		args.bitcoind_rpc_port,
 		args.bitcoind_rpc_username.clone(),
 		args.bitcoind_rpc_password.clone(),
-	) {
-		// Ok(client) => Arc::new(Mutex::new(client)),
+	)
+	.await
+	{
 		Ok(client) => Arc::new(client),
 		Err(e) => {
 			println!("Failed to connect to bitcoind client: {}", e);
@@ -320,7 +312,7 @@ async fn main() {
 	let persister = Arc::new(FilesystemPersister::new(ldk_data_dir.clone()));
 
 	// Step 5: Initialize the ChainMonitor
-	let chain_monitor: Arc<ArcChainMonitor> = Arc::new(ChainMonitor::new(
+	let chain_monitor: Arc<ChainMonitor> = Arc::new(chainmonitor::ChainMonitor::new(
 		None,
 		broadcaster.clone(),
 		logger.clone(),
@@ -341,9 +333,16 @@ async fn main() {
 	} else {
 		let mut key = [0; 32];
 		thread_rng().fill_bytes(&mut key);
-		let mut f = File::create(keys_seed_path).unwrap();
-		f.write_all(&key).expect("Failed to write node keys seed to disk");
-		f.sync_all().expect("Failed to sync node keys seed to disk");
+		match File::create(keys_seed_path.clone()) {
+			Ok(mut f) => {
+				f.write_all(&key).expect("Failed to write node keys seed to disk");
+				f.sync_all().expect("Failed to sync node keys seed to disk");
+			}
+			Err(e) => {
+				println!("ERROR: Unable to create keys seed file {}: {}", keys_seed_path, e);
+				return;
+			}
+		}
 		key
 	};
 	let cur = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
@@ -376,8 +375,8 @@ async fn main() {
 		} else {
 			// We're starting a fresh node.
 			restarting_node = false;
-			// let getinfo_resp = bitcoind_client.lock().unwrap().get_blockchain_info().await;
 			let getinfo_resp = bitcoind_client.get_blockchain_info().await;
+
 			let chain_params = ChainParameters {
 				network: args.network,
 				latest_hash: getinfo_resp.latest_blockhash,
@@ -464,7 +463,7 @@ async fn main() {
 
 	// We poll for events in handle_ldk_events(..) rather than waiting for them over the
 	// mpsc::channel, so we can leave the event receiver as unused.
-	let (event_ntfn_sender, mut _event_ntfn_receiver) = mpsc::channel(2);
+	let (event_ntfn_sender, _event_ntfn_receiver) = mpsc::channel(2);
 	let peer_manager_connection_handler = peer_manager.clone();
 	let event_notifier = event_ntfn_sender.clone();
 	let listening_port = args.ldk_peer_listening_port;
@@ -484,14 +483,20 @@ async fn main() {
 	// Step 17: Connect and Disconnect Blocks
 	if chain_tip.is_none() {
 		// chain_tip = Some(init::validate_best_block_header(&mut bitcoind_client).await.unwrap());
-		chain_tip = Some(init::validate_best_block_header(&mut bitcoind_client.deref()).await.unwrap());
+		chain_tip =
+			Some(init::validate_best_block_header(&mut bitcoind_client.deref()).await.unwrap());
+		// chain_tip = Some(init::validate_best_block_header(&mut bitcoind_rpc_client).await.unwrap());
 	}
 	let channel_manager_listener = channel_manager.clone();
 	let chain_monitor_listener = chain_monitor.clone();
+	let bitcoind_block_source = bitcoind_client.clone();
 	let network = args.network;
 	tokio::spawn(async move {
 		// let chain_poller = poll::ChainPoller::new(&mut bitcoind_client, network);
-		let chain_poller = poll::ChainPoller::new(&mut bitcoind_client.clone().deref(), network);
+		let mut derefed = bitcoind_block_source.deref();
+		// let chain_poller = poll::ChainPoller::new(&mut bitcoind_block_source.deref(), network);
+		let chain_poller = poll::ChainPoller::new(&mut derefed, network);
+		// let chain_poller = poll::ChainPoller::new(&mut bitcoind_rpc_client, network);
 		let chain_listener = (chain_monitor_listener, channel_manager_listener);
 		let mut spv_client =
 			SpvClient::new(chain_tip.unwrap(), chain_poller, &mut cache, &chain_listener);
@@ -513,9 +518,11 @@ async fn main() {
 	);
 
 	let peer_manager_processor = peer_manager.clone();
-	tokio::spawn(move || loop {
-		peer_manager_processor.timer_tick_occurred();
-		tokio::time::sleep(Duration::from_secs(60)).await;
+	tokio::spawn(async move {
+		loop {
+			peer_manager_processor.timer_tick_occurred();
+			tokio::time::sleep(Duration::from_secs(60)).await;
+		}
 	});
 
 	// Step 15: Initialize LDK Event Handling
@@ -526,12 +533,21 @@ async fn main() {
 	let payment_info: PaymentInfoStorage = Arc::new(Mutex::new(HashMap::new()));
 	let payment_info_for_events = payment_info.clone();
 	let network = args.network;
-	tokio::spawn(async {
+	// let bitcoind = BitcoindClient::new(
+	//     args.bitcoind_rpc_host.clone(),
+	//     args.bitcoind_rpc_port,
+	//     args.bitcoind_rpc_username.clone(),
+	//     args.bitcoind_rpc_password.clone(),
+	// ).await.unwrap();
+	let bitcoind_rpc = bitcoind_client.clone();
+	tokio::spawn(async move {
 		handle_ldk_events(
 			peer_manager_event_listener,
 			channel_manager_event_listener,
 			chain_monitor_event_listener,
-			bitcoind_client.clone(),
+			// bitcoind_client.clone(),
+			bitcoind_rpc,
+			// bitcoind,
 			keys_manager_listener,
 			payment_info_for_events,
 			network,
