@@ -12,7 +12,7 @@ use bitcoin::consensus::encode;
 use bitcoin::hashes::sha256::Hash as Sha256;
 use bitcoin::hashes::Hash;
 use bitcoin::network::constants::Network;
-use bitcoin::BlockHash;
+use bitcoin::{BlockHash, Script};
 use bitcoin_bech32::WitnessProgram;
 use lightning::chain;
 use lightning::chain::chaininterface::{BroadcasterInterface, ConfirmationTarget, FeeEstimator};
@@ -44,7 +44,7 @@ use std::fmt;
 use std::fs;
 use std::fs::File;
 use std::io;
-use std::io::Write;
+use std::io::{Write, Error};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -52,7 +52,11 @@ use std::time::{Duration, SystemTime};
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 use crate::cli::LdkUserInfo;
-use lightning::util::ser::ReadableArgs;
+use lightning::util::ser::{ReadableArgs, Writeable, Writer};
+use bitcoin::secp256k1::{SecretKey, PublicKey, Signature, Secp256k1};
+use bitcoin::secp256k1;
+use lightning::ln::msgs::{DecodeError, UnsignedChannelAnnouncement};
+use lightning::ln::chan_utils::{ChannelTransactionParameters, CommitmentTransaction, ChannelPublicKeys, HTLCOutputInCommitment, HolderCommitmentTransaction};
 
 #[derive(PartialEq)]
 pub(crate) enum HTLCDirection {
@@ -266,6 +270,95 @@ fn handle_ldk_events<S: 'static + Sign + Sync, M: 'static + KeysInterface<Signer
 			}
 		}
 		thread::sleep(Duration::new(1, 0));
+	}
+}
+
+#[derive(Clone)]
+struct DynSigner {
+	inner: Arc<dyn Sign + Sync>,
+}
+
+impl Sign for DynSigner {
+	fn get_per_commitment_point<T: secp256k1::Signing + secp256k1::Verification>(&self, idx: u64, secp_ctx: &Secp256k1<T>) -> PublicKey {
+		unimplemented!()
+	}
+
+	fn release_commitment_secret(&self, idx: u64) -> [u8; 32] {
+		unimplemented!()
+	}
+
+	fn pubkeys(&self) -> &ChannelPublicKeys {
+		unimplemented!()
+	}
+
+	fn channel_keys_id(&self) -> [u8; 32] {
+		unimplemented!()
+	}
+
+	fn sign_counterparty_commitment<T: secp256k1::Signing + secp256k1::Verification>(&self, commitment_tx: &CommitmentTransaction, secp_ctx: &Secp256k1<T>) -> Result<(Signature, Vec<Signature>), ()> {
+		unimplemented!()
+	}
+
+	fn sign_holder_commitment_and_htlcs<T: secp256k1::Signing + secp256k1::Verification>(&self, commitment_tx: &HolderCommitmentTransaction, secp_ctx: &Secp256k1<T>) -> Result<(Signature, Vec<Signature>), ()> {
+		unimplemented!()
+	}
+
+	fn sign_justice_transaction<T: secp256k1::Signing + secp256k1::Verification>(&self, justice_tx: &Transaction, input: usize, amount: u64, per_commitment_key: &SecretKey, htlc: &Option<HTLCOutputInCommitment>, secp_ctx: &Secp256k1<T>) -> Result<Signature, ()> {
+		unimplemented!()
+	}
+
+	fn sign_counterparty_htlc_transaction<T: secp256k1::Signing + secp256k1::Verification>(&self, htlc_tx: &Transaction, input: usize, amount: u64, per_commitment_point: &PublicKey, htlc: &HTLCOutputInCommitment, secp_ctx: &Secp256k1<T>) -> Result<Signature, ()> {
+		unimplemented!()
+	}
+
+	fn sign_closing_transaction<T: secp256k1::Signing>(&self, closing_tx: &Transaction, secp_ctx: &Secp256k1<T>) -> Result<Signature, ()> {
+		unimplemented!()
+	}
+
+	fn sign_channel_announcement<T: secp256k1::Signing>(&self, msg: &UnsignedChannelAnnouncement, secp_ctx: &Secp256k1<T>) -> Result<Signature, ()> {
+		unimplemented!()
+	}
+
+	fn ready_channel(&mut self, channel_parameters: &ChannelTransactionParameters) {
+		unimplemented!()
+	}
+}
+
+impl Writeable for DynSigner {
+	fn write<W: Writer>(&self, writer: &mut W) -> Result<(), Error> {
+		unimplemented!()
+	}
+}
+
+struct DynKeysManager {
+	inner: Arc<dyn KeysInterface<Signer=DynSigner>>
+}
+
+impl KeysInterface for DynKeysManager {
+	type Signer = DynSigner;
+
+	fn get_node_secret(&self) -> SecretKey {
+		unimplemented!()
+	}
+
+	fn get_destination_script(&self) -> Script {
+		unimplemented!()
+	}
+
+	fn get_shutdown_pubkey(&self) -> PublicKey {
+		unimplemented!()
+	}
+
+	fn get_channel_signer(&self, inbound: bool, channel_value_satoshis: u64) -> Self::Signer {
+		unimplemented!()
+	}
+
+	fn get_secure_random_bytes(&self) -> [u8; 32] {
+		unimplemented!()
+	}
+
+	fn read_chan_signer(&self, reader: &[u8]) -> Result<Self::Signer, DecodeError> {
+		unimplemented!()
 	}
 }
 
