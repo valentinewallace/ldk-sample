@@ -18,14 +18,15 @@ use bitcoin_bech32::WitnessProgram;
 use lightning::chain;
 use lightning::chain::chaininterface::{BroadcasterInterface, ConfirmationTarget, FeeEstimator};
 use lightning::chain::chainmonitor::ChainMonitor;
-use lightning::chain::keysinterface::{InMemorySigner, KeysInterface, KeysManager};
+use lightning::chain::keysinterface::{InMemorySigner, KeysInterface, KeysManager, Sign};
 use lightning::chain::transaction::OutPoint;
 use lightning::chain::Filter;
 use lightning::chain::Watch;
 use lightning::ln::channelmanager;
 use lightning::ln::channelmanager::{
-	ChainParameters, ChannelManagerReadArgs, PaymentHash, PaymentPreimage, SimpleArcChannelManager,
+	ChainParameters, ChannelManagerReadArgs, PaymentHash, PaymentPreimage,
 };
+use lightning::ln::channelmanager::ChannelManager as RLChannelManager;
 use lightning::ln::peer_handler::{MessageHandler, SimpleArcPeerManager};
 use lightning::routing::network_graph::NetGraphMsgHandler;
 use lightning::util::config::UserConfig;
@@ -81,8 +82,8 @@ pub(crate) type PaymentInfoStorage = Arc<
 	>,
 >;
 
-type ArcChainMonitor = ChainMonitor<
-	InMemorySigner,
+type ArcChainMonitor<S: Sign> = ChainMonitor<
+	S,
 	Arc<dyn Filter>,
 	Arc<BitcoindClient>,
 	Arc<BitcoindClient>,
@@ -90,22 +91,22 @@ type ArcChainMonitor = ChainMonitor<
 	Arc<FilesystemPersister>,
 >;
 
-pub(crate) type PeerManager = SimpleArcPeerManager<
+pub(crate) type PeerManager<S: Sign> = SimpleArcPeerManager<
 	SocketDescriptor,
-	ArcChainMonitor,
+	ArcChainMonitor<S>,
 	BitcoindClient,
 	BitcoindClient,
 	dyn chain::Access,
 	FilesystemLogger,
 >;
 
-pub(crate) type ChannelManager =
-	SimpleArcChannelManager<ArcChainMonitor, BitcoindClient, BitcoindClient, FilesystemLogger>;
+pub(crate) type ChannelManager<S: Sign, M: KeysInterface<Signer=S>> =
+	RLChannelManager<S, Arc<ArcChainMonitor<S>>, Arc<BitcoindClient>, Arc<M>, Arc<BitcoindClient>, Arc<FilesystemLogger>>;
 
-fn handle_ldk_events(
-	peer_manager: Arc<PeerManager>, channel_manager: Arc<ChannelManager>,
-	chain_monitor: Arc<ArcChainMonitor>, bitcoind_client: Arc<BitcoindClient>,
-	keys_manager: Arc<KeysManager>, payment_storage: PaymentInfoStorage, network: Network,
+fn handle_ldk_events<S: Sign + Sync, M: KeysInterface<Signer=S>>(
+	peer_manager: Arc<PeerManager<S>>, channel_manager: Arc<ChannelManager<S, M>>,
+	chain_monitor: Arc<ArcChainMonitor<S>>, bitcoind_client: Arc<BitcoindClient>,
+	keys_manager: Arc<M>, payment_storage: PaymentInfoStorage, network: Network,
 ) {
 	let mut pending_txs: HashMap<OutPoint, Transaction> = HashMap::new();
 	loop {
@@ -265,6 +266,10 @@ fn handle_ldk_events(
 }
 
 fn main() {
+	run::<InMemorySigner>()
+}
+
+fn run<S: Sign>() {
 	let args = match cli::parse_startup_args() {
 		Ok(user_args) => user_args,
 		Err(()) => return,
@@ -308,7 +313,7 @@ fn main() {
 	let persister = Arc::new(FilesystemPersister::new(ldk_data_dir.clone()));
 
 	// Step 5: Initialize the ChainMonitor
-	let chain_monitor: Arc<ArcChainMonitor> = Arc::new(ChainMonitor::new(
+	let chain_monitor: Arc<ArcChainMonitor<S>> = Arc::new(ChainMonitor::new(
 		None,
 		broadcaster.clone(),
 		logger.clone(),
@@ -361,7 +366,7 @@ fn main() {
 				user_config,
 				channel_monitor_mut_references,
 			);
-			<(BlockHash, ChannelManager)>::read(&mut f, read_args).unwrap()
+			<(BlockHash, ChannelManager<S>)>::read(&mut f, read_args).unwrap()
 		} else {
 			// We're starting a fresh node.
 			restarting_node = false;
@@ -434,12 +439,12 @@ fn main() {
 		Arc::new(NetGraphMsgHandler::new(genesis, None::<Arc<dyn chain::Access>>, logger.clone()));
 
 	// Step 14: Initialize the PeerManager
-	let channel_manager: Arc<ChannelManager> = Arc::new(channel_manager);
+	let channel_manager: Arc<ChannelManager<S>> = Arc::new(channel_manager);
 	let mut ephemeral_bytes = [0; 32];
 	rand::thread_rng().fill_bytes(&mut ephemeral_bytes);
 	let lightning_msg_handler =
 		MessageHandler { chan_handler: channel_manager.clone(), route_handler: router.clone() };
-	let peer_manager: Arc<PeerManager> = Arc::new(PeerManager::new(
+	let peer_manager: Arc<PeerManager<S>> = Arc::new(PeerManager::new(
 		lightning_msg_handler,
 		keys_manager.get_node_secret(),
 		&ephemeral_bytes,
@@ -493,7 +498,7 @@ fn main() {
 	let runtime_handle = runtime.handle();
 	let data_dir = ldk_data_dir.clone();
 	let persist_channel_manager_callback =
-		move |node: &ChannelManager| FilesystemPersister::persist_manager(data_dir.clone(), &*node);
+		move |node: &ChannelManager<S>| FilesystemPersister::persist_manager(data_dir.clone(), &*node);
 	BackgroundProcessor::start(
 		persist_channel_manager_callback,
 		channel_manager.clone(),

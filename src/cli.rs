@@ -28,6 +28,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::runtime::Handle;
 use tokio::sync::mpsc;
+use lightning::chain::keysinterface::{Sign, KeysInterface};
 
 pub(crate) struct LdkUserInfo {
 	pub(crate) bitcoind_rpc_username: String,
@@ -98,8 +99,8 @@ pub(crate) fn parse_startup_args() -> Result<LdkUserInfo, ()> {
 	})
 }
 
-pub(crate) fn poll_for_user_input(
-	peer_manager: Arc<PeerManager>, channel_manager: Arc<ChannelManager>,
+pub(crate) fn poll_for_user_input<S: Sign + Sync, M: KeysInterface<Signer=S>>(
+	peer_manager: Arc<PeerManager<S>>, channel_manager: Arc<ChannelManager<S, M>>,
 	router: Arc<NetGraphMsgHandler<Arc<dyn chain::Access>, Arc<FilesystemLogger>>>,
 	payment_storage: PaymentInfoStorage, node_privkey: SecretKey, event_notifier: mpsc::Sender<()>,
 	ldk_data_dir: String, logger: Arc<FilesystemLogger>, runtime_handle: Handle, network: Network,
@@ -394,7 +395,7 @@ fn help() {
 	println!("forceclosechannel <channel_id>");
 }
 
-fn list_channels(channel_manager: Arc<ChannelManager>) {
+fn list_channels<S: Sign + Sync, M: KeysInterface<Signer=S>>(channel_manager: Arc<ChannelManager<S, M>>) {
 	print!("[");
 	for chan_info in channel_manager.list_channels() {
 		println!("");
@@ -446,8 +447,8 @@ fn list_payments(payment_storage: PaymentInfoStorage) {
 	println!("]");
 }
 
-pub(crate) fn connect_peer_if_necessary(
-	pubkey: PublicKey, peer_addr: SocketAddr, peer_manager: Arc<PeerManager>,
+pub(crate) fn connect_peer_if_necessary<S: Sign + Sync>(
+	pubkey: PublicKey, peer_addr: SocketAddr, peer_manager: Arc<PeerManager<S>>,
 	event_notifier: mpsc::Sender<()>, runtime: Handle,
 ) -> Result<(), ()> {
 	for node_pubkey in peer_manager.get_peer_node_ids() {
@@ -479,9 +480,9 @@ pub(crate) fn connect_peer_if_necessary(
 	Ok(())
 }
 
-fn open_channel(
+fn open_channel<S: Sign + Sync, M: KeysInterface<Signer=S>>(
 	peer_pubkey: PublicKey, channel_amt_sat: u64, announce_channel: bool,
-	channel_manager: Arc<ChannelManager>,
+	channel_manager: Arc<ChannelManager<S, M>>,
 ) -> Result<(), ()> {
 	let mut config = UserConfig::default();
 	if announce_channel {
@@ -501,11 +502,11 @@ fn open_channel(
 	}
 }
 
-fn send_payment(
+fn send_payment<S: Sign + Sync, M: KeysInterface<Signer=S>>(
 	payee: PublicKey, amt_msat: u64, final_cltv: u32, payment_hash: PaymentHash,
 	payment_secret: Option<PaymentSecret>, payee_features: Option<InvoiceFeatures>,
 	router: Arc<NetGraphMsgHandler<Arc<dyn chain::Access>, Arc<FilesystemLogger>>>,
-	channel_manager: Arc<ChannelManager>, payment_storage: PaymentInfoStorage,
+	channel_manager: Arc<ChannelManager<S, M>>, payment_storage: PaymentInfoStorage,
 	logger: Arc<FilesystemLogger>,
 ) {
 	let network_graph = router.network_graph.read().unwrap();
@@ -545,9 +546,9 @@ fn send_payment(
 	);
 }
 
-fn get_invoice(
+fn get_invoice<S: Sign + Sync, M: KeysInterface<Signer=S>>(
 	amt_sat: u64, payment_storage: PaymentInfoStorage, our_node_privkey: SecretKey,
-	channel_manager: Arc<ChannelManager>, network: Network,
+	channel_manager: Arc<ChannelManager<S, M>>, network: Network,
 ) {
 	let mut payments = payment_storage.lock().unwrap();
 	let secp_ctx = Secp256k1::new();
@@ -610,14 +611,14 @@ fn get_invoice(
 	);
 }
 
-fn close_channel(channel_id: [u8; 32], channel_manager: Arc<ChannelManager>) {
+fn close_channel<S: Sign + Sync, M: KeysInterface<Signer=S>>(channel_id: [u8; 32], channel_manager: Arc<ChannelManager<S, M>>) {
 	match channel_manager.close_channel(&channel_id) {
 		Ok(()) => println!("EVENT: initiating channel close"),
 		Err(e) => println!("ERROR: failed to close channel: {:?}", e),
 	}
 }
 
-fn force_close_channel(channel_id: [u8; 32], channel_manager: Arc<ChannelManager>) {
+fn force_close_channel<S: Sign + Sync, M: KeysInterface<Signer=S>>(channel_id: [u8; 32], channel_manager: Arc<ChannelManager<S, M>>) {
 	match channel_manager.force_close_channel(&channel_id) {
 		Ok(()) => println!("EVENT: initiating channel force-close"),
 		Err(e) => println!("ERROR: failed to force-close channel: {:?}", e),
