@@ -110,7 +110,7 @@ pub(crate) type SimpleArcPeerManager<S, KI, SD, C, L> = RLPeerManager<SD, Arc<Ch
 pub(crate) type ChannelManager<S, M> =
 	RLChannelManager<S, Arc<ArcChainMonitor<S>>, Arc<BitcoindClient>, Arc<M>, Arc<BitcoindClient>, Arc<FilesystemLogger>>;
 
-fn handle_ldk_events<S: 'static + Sign + Sync, M: 'static + KeysInterface<Signer=S>>(
+fn handle_ldk_events<S: 'static + Sign+Sync+Clone, M: 'static + KeysInterface<Signer=S>>(
 	peer_manager: Arc<PeerManager<S, M>>, channel_manager: Arc<ChannelManager<S, M>>,
 	chain_monitor: Arc<ArcChainMonitor<S>>, bitcoind_client: Arc<BitcoindClient>,
 	keys_manager: Arc<M>, payment_storage: PaymentInfoStorage, network: Network,
@@ -275,11 +275,11 @@ fn handle_ldk_events<S: 'static + Sign + Sync, M: 'static + KeysInterface<Signer
 
 #[derive(Clone)]
 struct DynSigner {
-	inner: Arc<dyn Sign + Sync>,
+	inner: Arc<dyn Sign+Sync>,
 }
 
 impl Sign for DynSigner {
-	fn get_per_commitment_point<T: secp256k1::Signing + secp256k1::Verification>(&self, idx: u64, secp_ctx: &Secp256k1<T>) -> PublicKey {
+	fn get_per_commitment_point(&self, idx: u64, secp_ctx: &Secp256k1<secp256k1::All>) -> PublicKey {
 		unimplemented!()
 	}
 
@@ -295,27 +295,27 @@ impl Sign for DynSigner {
 		unimplemented!()
 	}
 
-	fn sign_counterparty_commitment<T: secp256k1::Signing + secp256k1::Verification>(&self, commitment_tx: &CommitmentTransaction, secp_ctx: &Secp256k1<T>) -> Result<(Signature, Vec<Signature>), ()> {
+	fn sign_counterparty_commitment(&self, commitment_tx: &CommitmentTransaction, secp_ctx: &Secp256k1<secp256k1::All>) -> Result<(Signature, Vec<Signature>), ()> {
 		unimplemented!()
 	}
 
-	fn sign_holder_commitment_and_htlcs<T: secp256k1::Signing + secp256k1::Verification>(&self, commitment_tx: &HolderCommitmentTransaction, secp_ctx: &Secp256k1<T>) -> Result<(Signature, Vec<Signature>), ()> {
+	fn sign_holder_commitment_and_htlcs(&self, commitment_tx: &HolderCommitmentTransaction, secp_ctx: &Secp256k1<secp256k1::All>) -> Result<(Signature, Vec<Signature>), ()> {
 		unimplemented!()
 	}
 
-	fn sign_justice_transaction<T: secp256k1::Signing + secp256k1::Verification>(&self, justice_tx: &Transaction, input: usize, amount: u64, per_commitment_key: &SecretKey, htlc: &Option<HTLCOutputInCommitment>, secp_ctx: &Secp256k1<T>) -> Result<Signature, ()> {
+	fn sign_justice_transaction(&self, justice_tx: &Transaction, input: usize, amount: u64, per_commitment_key: &SecretKey, htlc: &Option<HTLCOutputInCommitment>, secp_ctx: &Secp256k1<secp256k1::All>) -> Result<Signature, ()> {
 		unimplemented!()
 	}
 
-	fn sign_counterparty_htlc_transaction<T: secp256k1::Signing + secp256k1::Verification>(&self, htlc_tx: &Transaction, input: usize, amount: u64, per_commitment_point: &PublicKey, htlc: &HTLCOutputInCommitment, secp_ctx: &Secp256k1<T>) -> Result<Signature, ()> {
+	fn sign_counterparty_htlc_transaction(&self, htlc_tx: &Transaction, input: usize, amount: u64, per_commitment_point: &PublicKey, htlc: &HTLCOutputInCommitment, secp_ctx: &Secp256k1<secp256k1::All>) -> Result<Signature, ()> {
 		unimplemented!()
 	}
 
-	fn sign_closing_transaction<T: secp256k1::Signing>(&self, closing_tx: &Transaction, secp_ctx: &Secp256k1<T>) -> Result<Signature, ()> {
+	fn sign_closing_transaction(&self, closing_tx: &Transaction, secp_ctx: &Secp256k1<secp256k1::All>) -> Result<Signature, ()> {
 		unimplemented!()
 	}
 
-	fn sign_channel_announcement<T: secp256k1::Signing>(&self, msg: &UnsignedChannelAnnouncement, secp_ctx: &Secp256k1<T>) -> Result<Signature, ()> {
+	fn sign_channel_announcement(&self, msg: &UnsignedChannelAnnouncement, secp_ctx: &Secp256k1<secp256k1::All>) -> Result<Signature, ()> {
 		unimplemented!()
 	}
 
@@ -325,7 +325,7 @@ impl Sign for DynSigner {
 }
 
 impl Writeable for DynSigner {
-	fn write<W: Writer>(&self, writer: &mut W) -> Result<(), Error> {
+	fn write(&self, writer: &mut Writer) -> Result<(), Error> {
 		unimplemented!()
 	}
 }
@@ -396,7 +396,7 @@ fn main() {
 	run(keys_manager, args, ldk_data_dir)
 }
 
-fn run<S: 'static + Sign + Sync, M: 'static + KeysInterface<Signer=S>>(keys_manager: Arc<M>, args: LdkUserInfo, ldk_data_dir: String) {
+fn run<S: 'static + Sign + Sync + Clone, M: 'static + KeysInterface<Signer=S>>(keys_manager: Arc<M>, args: LdkUserInfo, ldk_data_dir: String) {
 	// Initialize our bitcoind client.
 	let bitcoind_client = match BitcoindClient::new(
 		args.bitcoind_rpc_host.clone(),

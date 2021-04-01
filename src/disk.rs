@@ -6,12 +6,12 @@ use lightning::chain::channelmonitor::ChannelMonitor;
 use lightning::chain::keysinterface::{KeysInterface, Sign};
 use lightning::chain::transaction::OutPoint;
 use lightning::util::logger::{Logger, Record};
-use lightning::util::ser::{ReadableArgs, Writer};
+use lightning::util::ser::ReadableArgs;
 use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
 // use std::io::{BufRead, BufReader, Cursor, Write};
-use std::io::{BufRead, BufReader, Cursor};
+use std::io::{BufRead, BufReader, Cursor, Write};
 use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
@@ -73,7 +73,7 @@ pub(crate) fn read_channel_peer_data(
 	Ok(peer_data)
 }
 
-pub(crate) fn read_channelmonitors<S: Sign, M: KeysInterface<Signer=S>>(
+pub(crate) fn read_channelmonitors<S: Sign+Clone, M: KeysInterface<Signer=S>>(
 	path: String, keys_manager: Arc<M>,
 ) -> Result<HashMap<OutPoint, (BlockHash, ChannelMonitor<S>)>, std::io::Error> {
 	if !Path::new(&path).exists() {

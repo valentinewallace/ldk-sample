@@ -99,7 +99,7 @@ pub(crate) fn parse_startup_args() -> Result<LdkUserInfo, ()> {
 	})
 }
 
-pub(crate) fn poll_for_user_input<S: 'static + Sign + Sync, M: 'static + KeysInterface<Signer=S>>(
+pub(crate) fn poll_for_user_input<S: 'static + Sign+Sync+Clone, M: 'static + KeysInterface<Signer=S>>(
 	peer_manager: Arc<PeerManager<S, M>>, channel_manager: Arc<ChannelManager<S, M>>,
 	router: Arc<NetGraphMsgHandler<Arc<dyn chain::Access>, Arc<FilesystemLogger>>>,
 	payment_storage: PaymentInfoStorage, node_privkey: SecretKey, event_notifier: mpsc::Sender<()>,
@@ -395,7 +395,7 @@ fn help() {
 	println!("forceclosechannel <channel_id>");
 }
 
-fn list_channels<S: Sign + Sync, M: KeysInterface<Signer=S>>(channel_manager: Arc<ChannelManager<S, M>>) {
+fn list_channels<S: Sign+Sync+Clone, M: KeysInterface<Signer=S>>(channel_manager: Arc<ChannelManager<S, M>>) {
 	print!("[");
 	for chan_info in channel_manager.list_channels() {
 		println!("");
@@ -447,7 +447,7 @@ fn list_payments(payment_storage: PaymentInfoStorage) {
 	println!("]");
 }
 
-pub(crate) fn connect_peer_if_necessary<S: 'static + Sign + Sync, M: 'static + KeysInterface<Signer=S>>(
+pub(crate) fn connect_peer_if_necessary<S: 'static + Sign+Sync+Clone, M: 'static + KeysInterface<Signer=S>>(
 	pubkey: PublicKey, peer_addr: SocketAddr, peer_manager: Arc<PeerManager<S, M>>,
 	event_notifier: mpsc::Sender<()>, runtime: Handle,
 ) -> Result<(), ()> {
@@ -480,7 +480,7 @@ pub(crate) fn connect_peer_if_necessary<S: 'static + Sign + Sync, M: 'static + K
 	Ok(())
 }
 
-fn open_channel<S: Sign + Sync, M: KeysInterface<Signer=S>>(
+fn open_channel<S: Sign+Sync+Clone, M: KeysInterface<Signer=S>>(
 	peer_pubkey: PublicKey, channel_amt_sat: u64, announce_channel: bool,
 	channel_manager: Arc<ChannelManager<S, M>>,
 ) -> Result<(), ()> {
@@ -502,7 +502,7 @@ fn open_channel<S: Sign + Sync, M: KeysInterface<Signer=S>>(
 	}
 }
 
-fn send_payment<S: Sign + Sync, M: KeysInterface<Signer=S>>(
+fn send_payment<S: Sign+Sync+Clone, M: KeysInterface<Signer=S>>(
 	payee: PublicKey, amt_msat: u64, final_cltv: u32, payment_hash: PaymentHash,
 	payment_secret: Option<PaymentSecret>, payee_features: Option<InvoiceFeatures>,
 	router: Arc<NetGraphMsgHandler<Arc<dyn chain::Access>, Arc<FilesystemLogger>>>,
@@ -546,7 +546,7 @@ fn send_payment<S: Sign + Sync, M: KeysInterface<Signer=S>>(
 	);
 }
 
-fn get_invoice<S: Sign + Sync, M: KeysInterface<Signer=S>>(
+fn get_invoice<S: Sign+Sync+Clone, M: KeysInterface<Signer=S>>(
 	amt_sat: u64, payment_storage: PaymentInfoStorage, our_node_privkey: SecretKey,
 	channel_manager: Arc<ChannelManager<S, M>>, network: Network,
 ) {
@@ -611,14 +611,14 @@ fn get_invoice<S: Sign + Sync, M: KeysInterface<Signer=S>>(
 	);
 }
 
-fn close_channel<S: Sign + Sync, M: KeysInterface<Signer=S>>(channel_id: [u8; 32], channel_manager: Arc<ChannelManager<S, M>>) {
+fn close_channel<S: Sign+Sync+Clone, M: KeysInterface<Signer=S>>(channel_id: [u8; 32], channel_manager: Arc<ChannelManager<S, M>>) {
 	match channel_manager.close_channel(&channel_id) {
 		Ok(()) => println!("EVENT: initiating channel close"),
 		Err(e) => println!("ERROR: failed to close channel: {:?}", e),
 	}
 }
 
-fn force_close_channel<S: Sign + Sync, M: KeysInterface<Signer=S>>(channel_id: [u8; 32], channel_manager: Arc<ChannelManager<S, M>>) {
+fn force_close_channel<S: Sign+Sync+Clone, M: KeysInterface<Signer=S>>(channel_id: [u8; 32], channel_manager: Arc<ChannelManager<S, M>>) {
 	match channel_manager.force_close_channel(&channel_id) {
 		Ok(()) => println!("EVENT: initiating channel force-close"),
 		Err(e) => println!("ERROR: failed to force-close channel: {:?}", e),
