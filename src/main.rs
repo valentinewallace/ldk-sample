@@ -3,6 +3,9 @@ mod cli;
 mod convert;
 mod disk;
 mod hex_utils;
+mod keys;
+mod byte_utils;
+mod transaction_utils;
 
 use crate::bitcoind_client::BitcoindClient;
 use crate::disk::FilesystemLogger;
@@ -12,7 +15,7 @@ use bitcoin::consensus::encode;
 use bitcoin::hashes::sha256::Hash as Sha256;
 use bitcoin::hashes::Hash;
 use bitcoin::network::constants::Network;
-use bitcoin::{BlockHash, Script};
+use bitcoin::BlockHash;
 use bitcoin_bech32::WitnessProgram;
 use lightning::chain;
 use lightning::chain::chaininterface::{BroadcasterInterface, ConfirmationTarget, FeeEstimator};
@@ -44,7 +47,7 @@ use std::fmt;
 use std::fs;
 use std::fs::File;
 use std::io;
-use std::io::{Write, Error};
+use std::io::Write;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -52,11 +55,7 @@ use std::time::{Duration, SystemTime};
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 use crate::cli::LdkUserInfo;
-use lightning::util::ser::{ReadableArgs, Writeable, Writer};
-use bitcoin::secp256k1::{SecretKey, PublicKey, Signature, Secp256k1};
-use bitcoin::secp256k1;
-use lightning::ln::msgs::{DecodeError, UnsignedChannelAnnouncement};
-use lightning::ln::chan_utils::{ChannelTransactionParameters, CommitmentTransaction, ChannelPublicKeys, HTLCOutputInCommitment, HolderCommitmentTransaction};
+use lightning::util::ser::ReadableArgs;
 
 #[derive(PartialEq)]
 pub(crate) enum HTLCDirection {
@@ -273,95 +272,6 @@ fn handle_ldk_events<S: 'static + Sign+Sync+Clone, M: 'static + KeysInterface<Si
 	}
 }
 
-#[derive(Clone)]
-struct DynSigner {
-	inner: Arc<dyn Sign+Sync>,
-}
-
-impl Sign for DynSigner {
-	fn get_per_commitment_point(&self, idx: u64, secp_ctx: &Secp256k1<secp256k1::All>) -> PublicKey {
-		unimplemented!()
-	}
-
-	fn release_commitment_secret(&self, idx: u64) -> [u8; 32] {
-		unimplemented!()
-	}
-
-	fn pubkeys(&self) -> &ChannelPublicKeys {
-		unimplemented!()
-	}
-
-	fn channel_keys_id(&self) -> [u8; 32] {
-		unimplemented!()
-	}
-
-	fn sign_counterparty_commitment(&self, commitment_tx: &CommitmentTransaction, secp_ctx: &Secp256k1<secp256k1::All>) -> Result<(Signature, Vec<Signature>), ()> {
-		unimplemented!()
-	}
-
-	fn sign_holder_commitment_and_htlcs(&self, commitment_tx: &HolderCommitmentTransaction, secp_ctx: &Secp256k1<secp256k1::All>) -> Result<(Signature, Vec<Signature>), ()> {
-		unimplemented!()
-	}
-
-	fn sign_justice_transaction(&self, justice_tx: &Transaction, input: usize, amount: u64, per_commitment_key: &SecretKey, htlc: &Option<HTLCOutputInCommitment>, secp_ctx: &Secp256k1<secp256k1::All>) -> Result<Signature, ()> {
-		unimplemented!()
-	}
-
-	fn sign_counterparty_htlc_transaction(&self, htlc_tx: &Transaction, input: usize, amount: u64, per_commitment_point: &PublicKey, htlc: &HTLCOutputInCommitment, secp_ctx: &Secp256k1<secp256k1::All>) -> Result<Signature, ()> {
-		unimplemented!()
-	}
-
-	fn sign_closing_transaction(&self, closing_tx: &Transaction, secp_ctx: &Secp256k1<secp256k1::All>) -> Result<Signature, ()> {
-		unimplemented!()
-	}
-
-	fn sign_channel_announcement(&self, msg: &UnsignedChannelAnnouncement, secp_ctx: &Secp256k1<secp256k1::All>) -> Result<Signature, ()> {
-		unimplemented!()
-	}
-
-	fn ready_channel(&mut self, channel_parameters: &ChannelTransactionParameters) {
-		unimplemented!()
-	}
-}
-
-impl Writeable for DynSigner {
-	fn write(&self, writer: &mut Writer) -> Result<(), Error> {
-		unimplemented!()
-	}
-}
-
-struct DynKeysManager {
-	inner: Arc<dyn KeysInterface<Signer=DynSigner>>
-}
-
-impl KeysInterface for DynKeysManager {
-	type Signer = DynSigner;
-
-	fn get_node_secret(&self) -> SecretKey {
-		unimplemented!()
-	}
-
-	fn get_destination_script(&self) -> Script {
-		unimplemented!()
-	}
-
-	fn get_shutdown_pubkey(&self) -> PublicKey {
-		unimplemented!()
-	}
-
-	fn get_channel_signer(&self, inbound: bool, channel_value_satoshis: u64) -> Self::Signer {
-		unimplemented!()
-	}
-
-	fn get_secure_random_bytes(&self) -> [u8; 32] {
-		unimplemented!()
-	}
-
-	fn read_chan_signer(&self, reader: &[u8]) -> Result<Self::Signer, DecodeError> {
-		unimplemented!()
-	}
-}
-
 fn main() {
 	let args = match cli::parse_startup_args() {
 		Ok(user_args) => user_args,
@@ -396,7 +306,7 @@ fn main() {
 	run(keys_manager, args, ldk_data_dir)
 }
 
-fn run<S: 'static + Sign + Sync + Clone, M: 'static + KeysInterface<Signer=S>>(keys_manager: Arc<M>, args: LdkUserInfo, ldk_data_dir: String) {
+fn run<S: 'static + Sign + Clone + Sync, M: 'static + KeysInterface<Signer=S>>(keys_manager: Arc<M>, args: LdkUserInfo, ldk_data_dir: String) {
 	// Initialize our bitcoind client.
 	let bitcoind_client = match BitcoindClient::new(
 		args.bitcoind_rpc_host.clone(),
