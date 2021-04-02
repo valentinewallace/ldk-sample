@@ -6,9 +6,11 @@ mod hex_utils;
 mod keys;
 mod byte_utils;
 mod transaction_utils;
+mod default_signer;
 
 use crate::bitcoind_client::BitcoindClient;
 use crate::disk::FilesystemLogger;
+use bitcoin::secp256k1::Secp256k1;
 use bitcoin::blockdata::constants::genesis_block;
 use bitcoin::blockdata::transaction::Transaction;
 use bitcoin::consensus::encode;
@@ -20,7 +22,7 @@ use bitcoin_bech32::WitnessProgram;
 use lightning::chain;
 use lightning::chain::chaininterface::{BroadcasterInterface, ConfirmationTarget, FeeEstimator};
 use lightning::chain::chainmonitor::ChainMonitor;
-use lightning::chain::keysinterface::{KeysInterface, KeysManager, Sign};
+use lightning::chain::keysinterface::Sign;
 use lightning::chain::transaction::OutPoint;
 use lightning::chain::Filter;
 use lightning::chain::Watch;
@@ -56,6 +58,8 @@ use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 use crate::cli::LdkUserInfo;
 use lightning::util::ser::ReadableArgs;
+use crate::keys::{KeysManager, SpendableKeysInterface};
+use crate::default_signer::InMemorySignerFactory;
 
 #[derive(PartialEq)]
 pub(crate) enum HTLCDirection {
@@ -109,7 +113,7 @@ pub(crate) type SimpleArcPeerManager<S, KI, SD, C, L> = RLPeerManager<SD, Arc<Ch
 pub(crate) type ChannelManager<S, M> =
 	RLChannelManager<S, Arc<ArcChainMonitor<S>>, Arc<BitcoindClient>, Arc<M>, Arc<BitcoindClient>, Arc<FilesystemLogger>>;
 
-fn handle_ldk_events<S: 'static + Sign+Sync+Clone, M: 'static + KeysInterface<Signer=S>>(
+fn handle_ldk_events<S: 'static + Sign+Sync+Clone, M: 'static + SpendableKeysInterface<Signer=S>>(
 	peer_manager: Arc<PeerManager<S, M>>, channel_manager: Arc<ChannelManager<S, M>>,
 	chain_monitor: Arc<ArcChainMonitor<S>>, bitcoind_client: Arc<BitcoindClient>,
 	keys_manager: Arc<M>, payment_storage: PaymentInfoStorage, network: Network,
@@ -254,16 +258,16 @@ fn handle_ldk_events<S: 'static + Sign+Sync+Clone, M: 'static + KeysInterface<Si
 					let tx_feerate =
 						bitcoind_client.get_est_sat_per_1000_weight(ConfirmationTarget::Normal);
 					// FIXME this is not in KeysInterface
-					// let spending_tx = keys_manager
-					// 	.spend_spendable_outputs(
-					// 		output_descriptors,
-					// 		Vec::new(),
-					// 		destination_address.script_pubkey(),
-					// 		tx_feerate,
-					// 		&Secp256k1::new(),
-					// 	)
-					// 	.unwrap();
-					// bitcoind_client.broadcast_transaction(&spending_tx);
+					let spending_tx = keys_manager
+						.spend_spendable_outputs(
+							output_descriptors,
+							Vec::new(),
+							destination_address.script_pubkey(),
+							tx_feerate,
+							&Secp256k1::new(),
+						)
+						.unwrap();
+					bitcoind_client.broadcast_transaction(&spending_tx);
 					// XXX maybe need to rescan and blah?
 				}
 			}
@@ -272,6 +276,7 @@ fn handle_ldk_events<S: 'static + Sign+Sync+Clone, M: 'static + KeysInterface<Si
 	}
 }
 
+// XXX put the world together
 fn main() {
 	let args = match cli::parse_startup_args() {
 		Ok(user_args) => user_args,
@@ -301,12 +306,14 @@ fn main() {
 		key
 	};
 	let cur = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
-	let keys_manager = Arc::new(KeysManager::new(&keys_seed, cur.as_secs(), cur.subsec_nanos()));
+	let factory = InMemorySignerFactory::new(&keys_seed);
+	let keys_manager = Arc::new(KeysManager::new(&keys_seed, cur.as_secs(), cur.subsec_nanos(), factory));
 
 	run(keys_manager, args, ldk_data_dir)
 }
 
-fn run<S: 'static + Sign + Clone + Sync, M: 'static + KeysInterface<Signer=S>>(keys_manager: Arc<M>, args: LdkUserInfo, ldk_data_dir: String) {
+// XXX run the world
+fn run<S: 'static + Sign + Clone + Sync, M: 'static + SpendableKeysInterface<Signer=S>>(keys_manager: Arc<M>, args: LdkUserInfo, ldk_data_dir: String) {
 	// Initialize our bitcoind client.
 	let bitcoind_client = match BitcoindClient::new(
 		args.bitcoind_rpc_host.clone(),
