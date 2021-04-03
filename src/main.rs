@@ -22,7 +22,6 @@ use bitcoin_bech32::WitnessProgram;
 use lightning::chain;
 use lightning::chain::chaininterface::{BroadcasterInterface, ConfirmationTarget, FeeEstimator};
 use lightning::chain::chainmonitor::ChainMonitor;
-use lightning::chain::keysinterface::Sign;
 use lightning::chain::transaction::OutPoint;
 use lightning::chain::Filter;
 use lightning::chain::Watch;
@@ -58,7 +57,7 @@ use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 use crate::cli::LdkUserInfo;
 use lightning::util::ser::ReadableArgs;
-use crate::keys::{KeysManager, SpendableKeysInterface};
+use crate::keys::{KeysManager, DynSigner, DynKeysInterface};
 use crate::default_signer::InMemorySignerFactory;
 
 #[derive(PartialEq)]
@@ -90,8 +89,8 @@ pub(crate) type PaymentInfoStorage = Arc<
 	>,
 >;
 
-type ArcChainMonitor<S> = ChainMonitor<
-	S,
+type ArcChainMonitor = ChainMonitor<
+	DynSigner,
 	Arc<dyn Filter>,
 	Arc<BitcoindClient>,
 	Arc<BitcoindClient>,
@@ -99,23 +98,22 @@ type ArcChainMonitor<S> = ChainMonitor<
 	Arc<FilesystemPersister>,
 >;
 
-pub(crate) type PeerManager<S, KI> = SimpleArcPeerManager<
-	S,
+pub(crate) type PeerManager<KI> = SimpleArcPeerManager<
 	KI,
 	SocketDescriptor,
 	dyn chain::Access,
 	FilesystemLogger,
 >;
 
-pub(crate) type SimpleArcPeerManager<S, KI, SD, C, L> = RLPeerManager<SD, Arc<ChannelManager<S, KI>>, Arc<NetGraphMsgHandler<Arc<C>, Arc<L>>>, Arc<L>>;
+pub(crate) type SimpleArcPeerManager<KI, SD, C, L> = RLPeerManager<SD, Arc<ChannelManager<KI>>, Arc<NetGraphMsgHandler<Arc<C>, Arc<L>>>, Arc<L>>;
 
 
-pub(crate) type ChannelManager<S, M> =
-	RLChannelManager<S, Arc<ArcChainMonitor<S>>, Arc<BitcoindClient>, Arc<M>, Arc<BitcoindClient>, Arc<FilesystemLogger>>;
+pub(crate) type ChannelManager<M> =
+	RLChannelManager<DynSigner, Arc<ArcChainMonitor>, Arc<BitcoindClient>, Arc<M>, Arc<BitcoindClient>, Arc<FilesystemLogger>>;
 
-fn handle_ldk_events<S: 'static + Sign+Sync+Clone, M: 'static + SpendableKeysInterface<Signer=S>>(
-	peer_manager: Arc<PeerManager<S, M>>, channel_manager: Arc<ChannelManager<S, M>>,
-	chain_monitor: Arc<ArcChainMonitor<S>>, bitcoind_client: Arc<BitcoindClient>,
+fn handle_ldk_events<M: 'static + DynKeysInterface>(
+	peer_manager: Arc<PeerManager<M>>, channel_manager: Arc<ChannelManager<M>>,
+	chain_monitor: Arc<ArcChainMonitor>, bitcoind_client: Arc<BitcoindClient>,
 	keys_manager: Arc<M>, payment_storage: PaymentInfoStorage, network: Network,
 ) {
 	let mut pending_txs: HashMap<OutPoint, Transaction> = HashMap::new();
@@ -313,7 +311,7 @@ fn main() {
 }
 
 // XXX run the world
-fn run<S: 'static + Sign + Clone + Sync, M: 'static + SpendableKeysInterface<Signer=S>>(keys_manager: Arc<M>, args: LdkUserInfo, ldk_data_dir: String) {
+fn run<M: 'static + DynKeysInterface>(keys_manager: Arc<M>, args: LdkUserInfo, ldk_data_dir: String) {
 	// Initialize our bitcoind client.
 	let bitcoind_client = match BitcoindClient::new(
 		args.bitcoind_rpc_host.clone(),
@@ -348,7 +346,7 @@ fn run<S: 'static + Sign + Clone + Sync, M: 'static + SpendableKeysInterface<Sig
 	let persister = Arc::new(FilesystemPersister::new(ldk_data_dir.clone()));
 
 	// Step 5: Initialize the ChainMonitor
-	let chain_monitor: Arc<ArcChainMonitor<S>> = Arc::new(ChainMonitor::new(
+	let chain_monitor: Arc<ArcChainMonitor> = Arc::new(ChainMonitor::new(
 		None,
 		broadcaster.clone(),
 		logger.clone(),
@@ -380,7 +378,7 @@ fn run<S: 'static + Sign + Clone + Sync, M: 'static + SpendableKeysInterface<Sig
 				user_config,
 				channel_monitor_mut_references,
 			);
-			<(BlockHash, ChannelManager<S, M>)>::read(&mut f, read_args).unwrap()
+			<(BlockHash, ChannelManager<M>)>::read(&mut f, read_args).unwrap()
 		} else {
 			// We're starting a fresh node.
 			restarting_node = false;
@@ -453,12 +451,12 @@ fn run<S: 'static + Sign + Clone + Sync, M: 'static + SpendableKeysInterface<Sig
 		Arc::new(NetGraphMsgHandler::new(genesis, None::<Arc<dyn chain::Access>>, logger.clone()));
 
 	// Step 14: Initialize the PeerManager
-	let channel_manager: Arc<ChannelManager<S, M>> = Arc::new(channel_manager);
+	let channel_manager: Arc<ChannelManager<M>> = Arc::new(channel_manager);
 	let mut ephemeral_bytes = [0; 32];
 	rand::thread_rng().fill_bytes(&mut ephemeral_bytes);
 	let lightning_msg_handler =
 		MessageHandler { chan_handler: channel_manager.clone(), route_handler: router.clone() };
-	let peer_manager: Arc<PeerManager<S, M>> = Arc::new(PeerManager::new(
+	let peer_manager: Arc<PeerManager<M>> = Arc::new(PeerManager::new(
 		lightning_msg_handler,
 		keys_manager.get_node_secret(),
 		&ephemeral_bytes,
@@ -512,7 +510,7 @@ fn run<S: 'static + Sign + Clone + Sync, M: 'static + SpendableKeysInterface<Sig
 	let runtime_handle = runtime.handle();
 	let data_dir = ldk_data_dir.clone();
 	let persist_channel_manager_callback =
-		move |node: &ChannelManager<S, M>| FilesystemPersister::persist_manager(data_dir.clone(), &*node);
+		move |node: &ChannelManager<M>| FilesystemPersister::persist_manager(data_dir.clone(), &*node);
 	BackgroundProcessor::start(
 		persist_channel_manager_callback,
 		channel_manager.clone(),

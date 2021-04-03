@@ -31,6 +31,9 @@ pub trait SpendableKeysInterface : KeysInterface {
     fn spend_spendable_outputs(&self, descriptors: &[&SpendableOutputDescriptor], outputs: Vec<TxOut>, change_destination_script: Script, feerate_sat_per_1000_weight: u32, secp_ctx: &Secp256k1<All>) -> Result<Transaction, ()>;
 }
 
+pub trait DynKeysInterface : SpendableKeysInterface<Signer=DynSigner> {
+}
+
 // XXX copied from keysinterface.rs and decoupled from InMemorySigner
 // XXX parametrized by SignerFactory
 
@@ -181,6 +184,9 @@ impl<F: SignerFactory> KeysInterface for KeysManager<F> {
     fn read_chan_signer(&self, reader: &[u8]) -> Result<Self::Signer, DecodeError> {
         DynSigner::read(&mut std::io::Cursor::new(reader))
     }
+}
+
+impl<F: SignerFactory> DynKeysInterface for KeysManager<F> {
 }
 
 impl<F: SignerFactory> SpendableKeysInterface for KeysManager<F> {
