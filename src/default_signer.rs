@@ -34,7 +34,7 @@ impl PaymentSign for InMemorySigner {
 }
 
 impl InnerSign for InMemorySigner {
-    fn box_clone(&self) -> Box<dyn InnerSign + Sync> {
+    fn box_clone(&self) -> Box<dyn InnerSign> {
         Box::new(self.clone())
     }
 }

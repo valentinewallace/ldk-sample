@@ -316,11 +316,11 @@ pub trait PaymentSign: Sign {
 
 // XXX helper to allow DynSigner to clone itself
 pub trait InnerSign: PaymentSign {
-    fn box_clone(&self) -> Box<dyn InnerSign + Sync>;
+    fn box_clone(&self) -> Box<dyn InnerSign>;
 }
 
 pub struct DynSigner {
-    pub inner: Box<dyn InnerSign + Sync>,
+    pub inner: Box<dyn InnerSign>,
 }
 
 impl Clone for DynSigner {
