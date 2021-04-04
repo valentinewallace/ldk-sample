@@ -57,8 +57,9 @@ use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 use crate::cli::LdkUserInfo;
 use lightning::util::ser::ReadableArgs;
-use crate::keys::{KeysManager, DynSigner, DynKeysInterface};
+use crate::keys::{KeysManager, DynSigner, DynKeysInterface, SpendableKeysInterface};
 use crate::default_signer::InMemorySignerFactory;
+use lightning::chain::keysinterface::KeysInterface;
 
 #[derive(PartialEq)]
 pub(crate) enum HTLCDirection {
@@ -98,23 +99,18 @@ type ArcChainMonitor = ChainMonitor<
 	Arc<FilesystemPersister>,
 >;
 
-pub(crate) type PeerManager<KI> = SimpleArcPeerManager<
-	KI,
-	SocketDescriptor,
-	dyn chain::Access,
-	FilesystemLogger,
->;
+pub(crate) type PeerManager = SimpleArcPeerManager<SocketDescriptor, dyn chain::Access, FilesystemLogger>;
 
-pub(crate) type SimpleArcPeerManager<KI, SD, C, L> = RLPeerManager<SD, Arc<ChannelManager<KI>>, Arc<NetGraphMsgHandler<Arc<C>, Arc<L>>>, Arc<L>>;
+pub(crate) type SimpleArcPeerManager<SD, C, L> = RLPeerManager<SD, Arc<ChannelManager>, Arc<NetGraphMsgHandler<Arc<C>, Arc<L>>>, Arc<L>>;
 
 
-pub(crate) type ChannelManager<M> =
-	RLChannelManager<DynSigner, Arc<ArcChainMonitor>, Arc<BitcoindClient>, Arc<M>, Arc<BitcoindClient>, Arc<FilesystemLogger>>;
+pub(crate) type ChannelManager =
+	RLChannelManager<DynSigner, Arc<ArcChainMonitor>, Arc<BitcoindClient>, Arc<DynKeysInterface>, Arc<BitcoindClient>, Arc<FilesystemLogger>>;
 
-fn handle_ldk_events<M: 'static + DynKeysInterface>(
-	peer_manager: Arc<PeerManager<M>>, channel_manager: Arc<ChannelManager<M>>,
+fn handle_ldk_events(
+	peer_manager: Arc<PeerManager>, channel_manager: Arc<ChannelManager>,
 	chain_monitor: Arc<ArcChainMonitor>, bitcoind_client: Arc<BitcoindClient>,
-	keys_manager: Arc<M>, payment_storage: PaymentInfoStorage, network: Network,
+	keys_manager: Arc<DynKeysInterface>, payment_storage: PaymentInfoStorage, network: Network,
 ) {
 	let mut pending_txs: HashMap<OutPoint, Transaction> = HashMap::new();
 	loop {
@@ -305,13 +301,14 @@ fn main() {
 	};
 	let cur = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
 	let factory = InMemorySignerFactory::new(&keys_seed);
-	let keys_manager = Arc::new(KeysManager::new(&keys_seed, cur.as_secs(), cur.subsec_nanos(), factory));
+	let manager = Box::new(KeysManager::new(&keys_seed, cur.as_secs(), cur.subsec_nanos(), factory));
+	let keys_manager = Arc::new(DynKeysInterface::new(manager));
 
 	run(keys_manager, args, ldk_data_dir)
 }
 
 // XXX run the world
-fn run<M: 'static + DynKeysInterface>(keys_manager: Arc<M>, args: LdkUserInfo, ldk_data_dir: String) {
+fn run(keys_manager: Arc<DynKeysInterface>, args: LdkUserInfo, ldk_data_dir: String) {
 	// Initialize our bitcoind client.
 	let bitcoind_client = match BitcoindClient::new(
 		args.bitcoind_rpc_host.clone(),
@@ -378,7 +375,7 @@ fn run<M: 'static + DynKeysInterface>(keys_manager: Arc<M>, args: LdkUserInfo, l
 				user_config,
 				channel_monitor_mut_references,
 			);
-			<(BlockHash, ChannelManager<M>)>::read(&mut f, read_args).unwrap()
+			<(BlockHash, ChannelManager)>::read(&mut f, read_args).unwrap()
 		} else {
 			// We're starting a fresh node.
 			restarting_node = false;
@@ -451,12 +448,12 @@ fn run<M: 'static + DynKeysInterface>(keys_manager: Arc<M>, args: LdkUserInfo, l
 		Arc::new(NetGraphMsgHandler::new(genesis, None::<Arc<dyn chain::Access>>, logger.clone()));
 
 	// Step 14: Initialize the PeerManager
-	let channel_manager: Arc<ChannelManager<M>> = Arc::new(channel_manager);
+	let channel_manager: Arc<ChannelManager> = Arc::new(channel_manager);
 	let mut ephemeral_bytes = [0; 32];
 	rand::thread_rng().fill_bytes(&mut ephemeral_bytes);
 	let lightning_msg_handler =
 		MessageHandler { chan_handler: channel_manager.clone(), route_handler: router.clone() };
-	let peer_manager: Arc<PeerManager<M>> = Arc::new(PeerManager::new(
+	let peer_manager: Arc<PeerManager> = Arc::new(PeerManager::new(
 		lightning_msg_handler,
 		keys_manager.get_node_secret(),
 		&ephemeral_bytes,
@@ -510,7 +507,7 @@ fn run<M: 'static + DynKeysInterface>(keys_manager: Arc<M>, args: LdkUserInfo, l
 	let runtime_handle = runtime.handle();
 	let data_dir = ldk_data_dir.clone();
 	let persist_channel_manager_callback =
-		move |node: &ChannelManager<M>| FilesystemPersister::persist_manager(data_dir.clone(), &*node);
+		move |node: &ChannelManager| FilesystemPersister::persist_manager(data_dir.clone(), &*node);
 	BackgroundProcessor::start(
 		persist_channel_manager_callback,
 		channel_manager.clone(),

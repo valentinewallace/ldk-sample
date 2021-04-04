@@ -31,7 +31,50 @@ pub trait SpendableKeysInterface : KeysInterface {
     fn spend_spendable_outputs(&self, descriptors: &[&SpendableOutputDescriptor], outputs: Vec<TxOut>, change_destination_script: Script, feerate_sat_per_1000_weight: u32, secp_ctx: &Secp256k1<All>) -> Result<Transaction, ()>;
 }
 
-pub trait DynKeysInterface : SpendableKeysInterface<Signer=DynSigner> {
+pub(crate) struct DynKeysInterface {
+    pub inner: Box<dyn SpendableKeysInterface<Signer=DynSigner>>
+}
+
+impl DynKeysInterface {
+    pub fn new(inner: Box<dyn SpendableKeysInterface<Signer=DynSigner>>) -> Self {
+        DynKeysInterface {
+            inner
+        }
+    }
+}
+
+impl KeysInterface for DynKeysInterface {
+    type Signer = DynSigner;
+
+    fn get_node_secret(&self) -> SecretKey {
+        self.inner.get_node_secret()
+    }
+
+    fn get_destination_script(&self) -> Script {
+        self.inner.get_destination_script()
+    }
+
+    fn get_shutdown_pubkey(&self) -> PublicKey {
+        self.inner.get_shutdown_pubkey()
+    }
+
+    fn get_channel_signer(&self, inbound: bool, channel_value_satoshis: u64) -> Self::Signer {
+        self.inner.get_channel_signer(inbound, channel_value_satoshis)
+    }
+
+    fn get_secure_random_bytes(&self) -> [u8; 32] {
+        self.inner.get_secure_random_bytes()
+    }
+
+    fn read_chan_signer(&self, reader: &[u8]) -> Result<Self::Signer, DecodeError> {
+        self.inner.read_chan_signer(reader)
+    }
+}
+
+impl SpendableKeysInterface for DynKeysInterface {
+    fn spend_spendable_outputs(&self, descriptors: &[&SpendableOutputDescriptor], outputs: Vec<TxOut>, change_destination_script: Script, feerate_sat_per_1000_weight: u32, secp_ctx: &Secp256k1<All>) -> Result<Transaction, ()> {
+        self.inner.spend_spendable_outputs(descriptors, outputs, change_destination_script, feerate_sat_per_1000_weight, secp_ctx)
+    }
 }
 
 // XXX copied from keysinterface.rs and decoupled from InMemorySigner
@@ -184,9 +227,6 @@ impl<F: SignerFactory> KeysInterface for KeysManager<F> {
     fn read_chan_signer(&self, reader: &[u8]) -> Result<Self::Signer, DecodeError> {
         DynSigner::read(&mut std::io::Cursor::new(reader))
     }
-}
-
-impl<F: SignerFactory> DynKeysInterface for KeysManager<F> {
 }
 
 impl<F: SignerFactory> SpendableKeysInterface for KeysManager<F> {
