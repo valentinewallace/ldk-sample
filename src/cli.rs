@@ -375,6 +375,31 @@ pub(crate) async fn poll_for_user_input(
 					channel_id.copy_from_slice(&channel_id_vec.unwrap());
 					force_close_channel(channel_id, channel_manager.clone());
 				}
+				"signmessage" => {
+					// let msg = words.next().unwrap();
+					let msg = "abcdefghijklmnopqrstuvwxyz1234567890";
+					println!(
+						"{}",
+						lightning::util::message_signing::sign(
+							msg.as_bytes(),
+							node_privkey.clone()
+						)
+						.unwrap()
+					);
+				}
+				"verifymessage" => {
+					let msg = "abcdefghijklmnopqrstuvwxyz1234567890";
+					let sig = words.next().unwrap();
+					let pubkey = words.next().unwrap();
+					println!(
+						"verified: {}",
+						lightning::util::message_signing::verify(
+							msg.as_bytes(),
+							sig,
+							hex_utils::to_compressed_pubkey(pubkey).unwrap()
+						)
+					);
+				}
 				_ => println!("Unknown command. See `\"help\" for available commands."),
 			}
 		}
