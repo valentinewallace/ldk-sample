@@ -393,6 +393,7 @@ pub(crate) async fn poll_for_user_input(
 				}
 				"nodeinfo" => node_info(channel_manager.clone(), peer_manager.clone()),
 				"listpeers" => list_peers(peer_manager.clone()),
+          "dumpnetworkgraph" => dump_network_graph(router.clone()),
 				_ => println!("Unknown command. See `\"help\" for available commands."),
 			}
 		}
@@ -614,32 +615,42 @@ fn send_payment(
 }
 
 fn keysend(payee: PublicKey, amt_msat: u64, router: Arc<NetGraphMsgHandler<Arc<dyn chain::Access + Send + Sync>, Arc<FilesystemLogger>>>, channel_manager: Arc<ChannelManager>, payment_storage: PaymentInfoStorage, logger: Arc<FilesystemLogger>) {
-	  let network_graph = router.network_graph.read().unwrap();
-	  let first_hops = channel_manager.list_usable_channels();
-	  let payer_pubkey = channel_manager.get_our_node_id();
+	  // let network_graph = router.network_graph.read().unwrap();
+	  // let first_hops = channel_manager.list_usable_channels();
+	  // let payer_pubkey = channel_manager.get_our_node_id();
 
-    println!("VMW: in keysend");
-	  let route = match router::get_route(
-		    &payer_pubkey,
-		    &network_graph,
-		    &payee,
-		    None,
-		    Some(&first_hops.iter().collect::<Vec<_>>()),
-		    &vec![],
-		    amt_msat,
-		    40,
-		    logger,
-	  ) {
-        Ok(r) => r,
-        Err(e) => {
-		        println!("ERROR: failed to find route: {}", e.err);
-		        return;
-        }
-    };
+    // println!("VMW: in keysend");
+	  // let route = match router::get_route(
+		//     &payer_pubkey,
+		//     &network_graph,
+		//     &payee,
+		//     None,
+		//     Some(&first_hops.iter().collect::<Vec<_>>()),
+		//     &vec![],
+		//     amt_msat,
+		//     40,
+		//     logger,
+	  // ) {
+    //     Ok(r) => r,
+    //     Err(e) => {
+		//         println!("ERROR: failed to find route: {}", e.err);
+		//         return;
+    //     }
+    // };
 
-    println!("VMW: got route");
-    channel_manager.keysend(&route).unwrap();
-    println!("VMW: keysend'd");
+    // println!("VMW: got route");
+	  // let mut payments = payment_storage.lock().unwrap();
+    // let payment_hash = channel_manager.send_spontaneous_payment(&route, None).unwrap();
+    // payments.insert(
+    //     payment_hash,
+    //     PaymentInfo {
+    //         preimage: None,
+    //         secret: None,
+    //         status: HTLCStatus::Pending,
+    //         amt_msat: MillisatAmount(Some(amt_msat)),
+    //     },
+    // );
+    // println!("VMW: keysend'd");
 }
 
 fn get_invoice(
@@ -694,6 +705,11 @@ fn force_close_channel(channel_id: [u8; 32], channel_manager: Arc<ChannelManager
 		Ok(()) => println!("EVENT: initiating channel force-close"),
 		Err(e) => println!("ERROR: failed to force-close channel: {:?}", e),
 	}
+}
+
+fn dump_network_graph(router: Arc<NetGraphMsgHandler<Arc<dyn chain::Access + Send + Sync>, Arc<FilesystemLogger>>>) {
+	  let network_graph = router.network_graph.read().unwrap();
+    println!("{}", network_graph);
 }
 
 pub(crate) fn parse_peer_info(

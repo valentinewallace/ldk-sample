@@ -14,12 +14,18 @@ edition = "2018"
 # lightning-net-tokio = { version = "0.0.14", git = "https://github.com/rust-bitcoin/rust-lightning" }
 # lightning-persister = { version = "0.0.14", git = "https://github.com/rust-bitcoin/rust-lightning" }
 # lightning-background-processor = { version = "0.0.14", git = "https://github.com/rust-bitcoin/rust-lightning" }
-lightning = { path = "../rust-lightning/lightning" }
-lightning-block-sync = { path = "../rust-lightning/lightning-block-sync", features = [ "rpc-client" ] }
-lightning-invoice = { path = "../rust-lightning/lightning-invoice" }
-lightning-net-tokio = { path = "../rust-lightning/lightning-net-tokio" }
-lightning-persister = { path = "../rust-lightning/lightning-persister" }
-lightning-background-processor = { path = "../rust-lightning/lightning-background-processor" }
+# lightning = { path = "../rust-lightning/lightning" }
+# lightning-block-sync = { path = "../rust-lightning/lightning-block-sync", features = [ "rpc-client" ] }
+# lightning-invoice = { path = "../rust-lightning/lightning-invoice" }
+# lightning-net-tokio = { path = "../rust-lightning/lightning-net-tokio" }
+# lightning-persister = { path = "../rust-lightning/lightning-persister" }
+# lightning-background-processor = { path = "../rust-lightning/lightning-background-processor" }
+lightning = { path = "../../rust-lightning/lightning" }
+lightning-block-sync = { path = "../../rust-lightning/lightning-block-sync", features = [ "rpc-client" ] }
+lightning-invoice = { path = "../../rust-lightning/lightning-invoice" }
+lightning-net-tokio = { path = "../../rust-lightning/lightning-net-tokio" }
+lightning-persister = { path = "../../rust-lightning/lightning-persister" }
+lightning-background-processor = { path = "../../rust-lightning/lightning-background-processor" }
 
 base64 = "0.13.0"
 bitcoin = "0.26"

@@ -29,7 +29,7 @@ use lightning::ln::peer_handler::{MessageHandler, SimpleArcPeerManager};
 use lightning::ln::{PaymentHash, PaymentPreimage, PaymentSecret};
 use lightning::routing::network_graph::NetGraphMsgHandler;
 use lightning::util::config::UserConfig;
-use lightning::util::events::Event;
+use lightning::util::events::{Event, ReceiveInfo};
 use lightning::util::ser::ReadableArgs;
 use lightning_background_processor::BackgroundProcessor;
 use lightning_block_sync::init;
@@ -141,8 +141,15 @@ async fn handle_ldk_events(
 			// Give the funding transaction back to LDK for opening the channel.
 			channel_manager.funding_transaction_generated(&temporary_channel_id, final_tx).unwrap();
 		}
-		Event::PaymentReceived { payment_hash, payment_preimage, payment_secret, amt, .. } => {
+		// Event::PaymentReceived { payment_hash, payment_preimage, payment_secret, amt, .. } => {
+		Event::PaymentReceived { payment_hash, receipt, amt, .. } => {
 			let mut payments = inbound_payments.lock().unwrap();
+        let (payment_preimage, payment_secret) = match receipt {
+            ReceiveInfo::Invoice { payment_preimage, payment_secret, .. } => {
+                (payment_preimage, Some(payment_secret))
+            },
+            ReceiveInfo::Spontaneous(preimage) => (Some(preimage), None),
+        };
 			let status = match channel_manager.claim_funds(payment_preimage.unwrap()) {
 				true => {
 					println!(
@@ -160,13 +167,13 @@ async fn handle_ldk_events(
 				Entry::Occupied(mut e) => {
 					let payment = e.get_mut();
 					payment.status = status;
-					payment.preimage = Some(payment_preimage.unwrap());
-					payment.secret = Some(payment_secret);
+					payment.preimage = payment_preimage;
+					payment.secret = payment_secret;
 				}
 				Entry::Vacant(e) => {
 					e.insert(PaymentInfo {
-						preimage: Some(payment_preimage.unwrap()),
-						secret: Some(payment_secret),
+						preimage: payment_preimage,
+						secret: payment_secret,
 						status,
 						amt_msat: MillisatAmount(Some(amt)),
 					});
@@ -340,7 +347,8 @@ async fn start_ldk() {
 	let mut channelmonitors = persister.read_channelmonitors(keys_manager.clone()).unwrap();
 
 	// Step 8: Initialize the ChannelManager
-	let user_config = UserConfig::default();
+	let mut user_config = UserConfig::default();
+    user_config.peer_channel_config_limits.force_announced_channel_preference = false;
 	let mut restarting_node = true;
 	let (channel_manager_blockhash, mut channel_manager) = {
 		if let Ok(mut f) = fs::File::open(format!("{}/manager", ldk_data_dir.clone())) {
@@ -551,7 +559,7 @@ async fn start_ldk() {
 	let network = args.network;
 	if args.ldk_announced_listen_addr.is_some() {
 		tokio::spawn(async move {
-			let mut interval = tokio::time::interval(Duration::from_secs(60));
+			let mut interval = tokio::time::interval(Duration::from_secs(5));
 			loop {
 				interval.tick().await;
 				chan_manager.broadcast_node_announcement(
