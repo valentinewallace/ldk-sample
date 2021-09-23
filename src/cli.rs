@@ -88,8 +88,9 @@ pub(crate) fn parse_startup_args() -> Result<LdkUserInfo, ()> {
 	let network: Network = match env::args().skip(arg_idx).next().as_ref().map(String::as_str) {
 		Some("testnet") => Network::Testnet,
 		Some("regtest") => Network::Regtest,
+		Some("mainnet") => Network::Bitcoin,
 		Some(net) => {
-			panic!("Unsupported network provided. Options are: `regtest`, `testnet`. Got {}", net);
+			panic!("Unsupported network provided. Options are: `regtest`, `testnet`, `mainnet`. Got {}", net);
 		}
 		None => Network::Testnet,
 	};
