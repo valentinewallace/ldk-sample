@@ -616,7 +616,7 @@ fn send_payment(
 	}
 	let status = match channel_manager.send_payment(&route.unwrap(), payment_hash, &payment_secret)
 	{
-		Ok(()) => {
+		Ok(_) => {
 			println!("EVENT: initiated sending {} msats to {}", amt_msat, payee);
 			HTLCStatus::Pending
 		}
