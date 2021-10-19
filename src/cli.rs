@@ -665,7 +665,7 @@ fn keysend(
 	};
 
 	let mut payments = payment_storage.lock().unwrap();
-	let payment_hash = channel_manager.send_spontaneous_payment(&route, None).unwrap();
+	let (payment_hash, _) = channel_manager.send_spontaneous_payment(&route, None).unwrap();
 	payments.insert(
 		payment_hash,
 		PaymentInfo {

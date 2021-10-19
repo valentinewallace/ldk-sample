@@ -252,7 +252,7 @@ checksum = "7b2f96d100e1cf1929e7719b7edb3b90ab5298072638fccd77be9ce942ecdfce"
 [[package]]
 name = "lightning"
 version = "0.0.101"
-source = "git+https://github.com/valentinewallace/rust-lightning?branch=2021-10-ldk-sample-mainnet#f33cb3eca88345855760471996aab408d2cd9d89"
+source = "git+https://github.com/valentinewallace/rust-lightning?branch=2021-10-ldk-sample-mainnet#d7204ecf3d04974968b64fccf34d5ffdb3e7b7a4"
 dependencies = [
  "bitcoin",
  "secp256k1",
@@ -261,7 +261,7 @@ dependencies = [
 [[package]]
 name = "lightning-background-processor"
 version = "0.0.101"
-source = "git+https://github.com/valentinewallace/rust-lightning?branch=2021-10-ldk-sample-mainnet#f33cb3eca88345855760471996aab408d2cd9d89"
+source = "git+https://github.com/valentinewallace/rust-lightning?branch=2021-10-ldk-sample-mainnet#d7204ecf3d04974968b64fccf34d5ffdb3e7b7a4"
 dependencies = [
  "bitcoin",
  "lightning",
@@ -271,7 +271,7 @@ dependencies = [
 [[package]]
 name = "lightning-block-sync"
 version = "0.0.101"
-source = "git+https://github.com/valentinewallace/rust-lightning?branch=2021-10-ldk-sample-mainnet#f33cb3eca88345855760471996aab408d2cd9d89"
+source = "git+https://github.com/valentinewallace/rust-lightning?branch=2021-10-ldk-sample-mainnet#d7204ecf3d04974968b64fccf34d5ffdb3e7b7a4"
 dependencies = [
  "bitcoin",
  "chunked_transfer",
@@ -283,7 +283,7 @@ dependencies = [
 [[package]]
 name = "lightning-invoice"
 version = "0.9.0"
-source = "git+https://github.com/valentinewallace/rust-lightning?branch=2021-10-ldk-sample-mainnet#f33cb3eca88345855760471996aab408d2cd9d89"
+source = "git+https://github.com/valentinewallace/rust-lightning?branch=2021-10-ldk-sample-mainnet#d7204ecf3d04974968b64fccf34d5ffdb3e7b7a4"
 dependencies = [
  "bech32",
  "bitcoin_hashes",
@@ -295,7 +295,7 @@ dependencies = [
 [[package]]
 name = "lightning-net-tokio"
 version = "0.0.101"
-source = "git+https://github.com/valentinewallace/rust-lightning?branch=2021-10-ldk-sample-mainnet#f33cb3eca88345855760471996aab408d2cd9d89"
+source = "git+https://github.com/valentinewallace/rust-lightning?branch=2021-10-ldk-sample-mainnet#d7204ecf3d04974968b64fccf34d5ffdb3e7b7a4"
 dependencies = [
  "bitcoin",
  "lightning",
@@ -305,7 +305,7 @@ dependencies = [
 [[package]]
 name = "lightning-persister"
 version = "0.0.101"
-source = "git+https://github.com/valentinewallace/rust-lightning?branch=2021-10-ldk-sample-mainnet#f33cb3eca88345855760471996aab408d2cd9d89"
+source = "git+https://github.com/valentinewallace/rust-lightning?branch=2021-10-ldk-sample-mainnet#d7204ecf3d04974968b64fccf34d5ffdb3e7b7a4"
 dependencies = [
  "bitcoin",
  "libc",
