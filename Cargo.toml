@@ -8,13 +8,20 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-lightning = { version = "0.0.111", features = ["max_level_trace"] }
-lightning-block-sync = { version = "0.0.111", features = [ "rpc-client" ] }
-lightning-invoice = { version = "0.19" }
-lightning-net-tokio = { version = "0.0.111" }
-lightning-persister = { version = "0.0.111" }
-lightning-background-processor = { version = "0.0.111" }
-lightning-rapid-gossip-sync = { version = "0.0.111" }
+# lightning = { version = "0.0.111", features = ["max_level_trace"] }
+# lightning-block-sync = { version = "0.0.111", features = [ "rpc-client" ] }
+# lightning-invoice = { version = "0.19" }
+# lightning-net-tokio = { version = "0.0.111" }
+# lightning-persister = { version = "0.0.111" }
+# lightning-background-processor = { version = "0.0.111" }
+# lightning-rapid-gossip-sync = { version = "0.0.111" }
+lightning = { git = "https://github.com/valentinewallace/rust-lightning/", branch = "2022-10-test-reply-path", features = ["max_level_trace"] }
+lightning-block-sync = { git = "https://github.com/valentinewallace/rust-lightning/", branch = "2022-10-test-reply-path", features = [ "rpc-client" ] }
+lightning-invoice = { git = "https://github.com/valentinewallace/rust-lightning/", branch = "2022-10-test-reply-path" }
+lightning-net-tokio = { git = "https://github.com/valentinewallace/rust-lightning/", branch = "2022-10-test-reply-path" }
+lightning-persister = { git = "https://github.com/valentinewallace/rust-lightning/", branch = "2022-10-test-reply-path" }
+lightning-background-processor = { git = "https://github.com/valentinewallace/rust-lightning/", branch = "2022-10-test-reply-path" }
+lightning-rapid-gossip-sync = { git = "https://github.com/valentinewallace/rust-lightning/", branch = "2022-10-test-reply-path" }
 
 base64 = "0.13.0"
 bitcoin = "0.29.0"
